@@ -672,10 +672,6 @@ vscode.window.showWorkspaceFolderPick = function (options) {
 	console.log("Called stubbed function: vscode.window.showWorkspaceFolderPick")
 	return Promise.resolve(null)
 }
-vscode.window.showOpenDialog = function (options) {
-	console.log("Called stubbed function: vscode.window.showOpenDialog")
-	return []
-}
 vscode.window.showSaveDialog = function (options) {
 	console.log("Called stubbed function: vscode.window.showSaveDialog")
 	return Promise.resolve(null)
@@ -816,7 +812,7 @@ vscode.TextDocumentSaveReason = { Manual: 0, AfterDelay: 0, FocusOut: 0 }
 vscode.workspace = {}
 vscode.workspace.fs = createStub("vscode.workspace.fs")
 vscode.workspace.rootPath = createStub("vscode.workspace.rootPath")
-vscode.workspace.workspaceFolders = createStub("vscode.workspace.workspaceFolders")
+vscode.workspace.workspaceFolders = []
 vscode.workspace.name = createStub("vscode.workspace.name")
 vscode.workspace.workspaceFile = createStub("vscode.workspace.workspaceFile")
 vscode.workspace.onDidChangeWorkspaceFolders = createStub("vscode.workspace.onDidChangeWorkspaceFolders")
@@ -894,10 +890,22 @@ vscode.workspace.onWillDeleteFiles = createStub("vscode.workspace.onWillDeleteFi
 vscode.workspace.onDidDeleteFiles = createStub("vscode.workspace.onDidDeleteFiles")
 vscode.workspace.onWillRenameFiles = createStub("vscode.workspace.onWillRenameFiles")
 vscode.workspace.onDidRenameFiles = createStub("vscode.workspace.onDidRenameFiles")
-vscode.workspace.getConfiguration = function (section, scope) {
-	console.log("Called stubbed function: vscode.workspace.getConfiguration")
-	return createStub("unknown")
+
+const workspaceConfigStore = {}
+vscode.workspace.getConfiguration = function (section) {
+	return {
+		get: (key, defaultValue) => {
+			return workspaceConfigStore[`${section}.${key}`] ?? defaultValue
+		},
+		update: (key, value, global) => {
+			workspaceConfigStore[`${section}.${key}`] = value
+		},
+		has: (key) => {
+			return `${section}.${key}` in workspaceConfigStore
+		},
+	}
 }
+
 vscode.workspace.onDidChangeConfiguration = createStub("vscode.workspace.onDidChangeConfiguration")
 vscode.workspace.registerTaskProvider = function (type, provider) {
 	console.log("Called stubbed function: vscode.workspace.registerTaskProvider")

@@ -6,19 +6,20 @@ import { Logger } from "@services/logging/Logger"
 import { WebviewProvider } from "@core/webview"
 import { AutoApprovalSettings } from "@shared/AutoApprovalSettings"
 import { TaskServiceClient } from "webview-ui/src/services/grpc-client"
+import { validateWorkspacePath, initializeGitRepository, getFileChanges, calculateToolSuccessRate } from "./GitHelper"
 import {
-	getWorkspacePath,
-	validateWorkspacePath,
-	initializeGitRepository,
-	getFileChanges,
-	calculateToolSuccessRate,
-} from "./GitHelper"
-import { updateGlobalState, getAllExtensionState, updateApiConfiguration, storeSecret } from "@core/storage/state"
+	updateGlobalState,
+	getAllExtensionState,
+	updateApiConfiguration,
+	storeSecret,
+	updateWorkspaceState,
+} from "@core/storage/state"
 import { ClineAsk, ExtensionMessage } from "@shared/ExtensionMessage"
 import { ApiProvider } from "@shared/api"
 import { HistoryItem } from "@shared/HistoryItem"
 import { getSavedClineMessages, getSavedApiConversationHistory } from "@core/storage/disk"
 import { AskResponseRequest } from "@/shared/proto/task"
+import { getCwd } from "@/utils/path"
 
 /**
  * Creates a tracker to monitor tool calls and failures during task execution
@@ -37,25 +38,28 @@ function createToolCallTracker(webviewProvider: WebviewProvider): {
 	// Intercept messages to track tool usage
 	const originalPostMessageToWebview = webviewProvider.controller.postMessageToWebview
 	webviewProvider.controller.postMessageToWebview = async (message: ExtensionMessage) => {
-		// Track tool calls
-		if (message.type === "partialMessage" && message.partialMessage?.say === "tool") {
-			const toolName = (message.partialMessage.text as any)?.tool
-			if (toolName) {
-				tracker.toolCalls[toolName] = (tracker.toolCalls[toolName] || 0) + 1
-			}
-		}
+		// NOTE: Tool tracking via partialMessage has been migrated to gRPC streaming
+		// This interceptor is kept for potential future use with other message types
 
-		// Track tool failures
-		if (message.type === "partialMessage" && message.partialMessage?.say === "error") {
-			const errorText = message.partialMessage.text
-			if (errorText && errorText.includes("Error executing tool")) {
-				const match = errorText.match(/Error executing tool: (\w+)/)
-				if (match && match[1]) {
-					const toolName = match[1]
-					tracker.toolFailures[toolName] = (tracker.toolFailures[toolName] || 0) + 1
-				}
-			}
-		}
+		// Track tool calls - commented out as partialMessage is now handled via gRPC
+		// if (message.type === "partialMessage" && message.partialMessage?.say === "tool") {
+		// 	const toolName = (message.partialMessage.text as any)?.tool
+		// 	if (toolName) {
+		// 		tracker.toolCalls[toolName] = (tracker.toolCalls[toolName] || 0) + 1
+		// 	}
+		// }
+
+		// Track tool failures - commented out as partialMessage is now handled via gRPC
+		// if (message.type === "partialMessage" && message.partialMessage?.say === "error") {
+		// 	const errorText = message.partialMessage.text
+		// 	if (errorText && errorText.includes("Error executing tool")) {
+		// 		const match = errorText.match(/Error executing tool: (\w+)/)
+		// 		if (match && match[1]) {
+		// 			const toolName = match[1]
+		// 			tracker.toolFailures[toolName] = (tracker.toolFailures[toolName] || 0) + 1
+		// 		}
+		// 	}
+		// }
 
 		return originalPostMessageToWebview.call(webviewProvider.controller, message)
 	}
@@ -206,7 +210,7 @@ export function createTestServer(webviewProvider?: WebviewProvider): http.Server
 
 				try {
 					// Get and validate the workspace path
-					const workspacePath = getWorkspacePath(visibleWebview)
+					const workspacePath = await getCwd()
 					Logger.log(`Using workspace path: ${workspacePath}`)
 
 					// Validate workspace path before proceeding with any operations
@@ -366,7 +370,7 @@ export function createTestServer(webviewProvider?: WebviewProvider): http.Server
 						let fileChanges
 						try {
 							// Get the workspace path using our helper function
-							const workspacePath = getWorkspacePath(visibleWebview)
+							const workspacePath = await getCwd()
 							Logger.log(`Getting file changes from workspace path: ${workspacePath}`)
 
 							// Log directory contents for debugging
@@ -504,22 +508,25 @@ export function createMessageCatcher(webviewProvider: WebviewProvider): vscode.D
 
 		// Intercept outgoing messages from extension to webview
 		webviewProvider.controller.postMessageToWebview = async (message: ExtensionMessage) => {
-			// Check for completion_result message
-			if (message.type === "partialMessage" && message.partialMessage?.say === "completion_result") {
-				// Complete the current task
-				completeTask()
-			}
+			// NOTE: Completion and ask message detection has been migrated to gRPC streaming
+			// This interceptor is kept for potential future use with other message types
 
-			// Check for ask messages that require user intervention
-			if (message.type === "partialMessage" && message.partialMessage?.type === "ask" && !message.partialMessage.partial) {
-				const askType = message.partialMessage.ask as ClineAsk
-				const askText = message.partialMessage.text
+			// Check for completion_result message - commented out as partialMessage is now handled via gRPC
+			// if (message.type === "partialMessage" && message.partialMessage?.say === "completion_result") {
+			// 	// Complete the current task
+			// 	completeTask()
+			// }
 
-				// Automatically respond to different types of asks
-				setTimeout(async () => {
-					await autoRespondToAsk(webviewProvider, askType, askText)
-				}, 100) // Small delay to ensure the message is processed first
-			}
+			// Check for ask messages that require user intervention - commented out as partialMessage is now handled via gRPC
+			// if (message.type === "partialMessage" && message.partialMessage?.type === "ask" && !message.partialMessage.partial) {
+			// 	const askType = message.partialMessage.ask as ClineAsk
+			// 	const askText = message.partialMessage.text
+
+			// 	// Automatically respond to different types of asks
+			// 	setTimeout(async () => {
+			// 		await autoRespondToAsk(webviewProvider, askType, askText)
+			// 	}, 100) // Small delay to ensure the message is processed first
+			// }
 
 			return originalPostMessageToWebview.call(webviewProvider.controller, message)
 		}
